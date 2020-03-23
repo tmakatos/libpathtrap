@@ -15,6 +15,7 @@
 #include <sys/un.h>
 #include <signal.h>
 #include <sys/mman.h>
+#include <dlfcn.h>
 
 #include "vma_addr.h"
 
@@ -23,17 +24,11 @@
 		fprintf(stderr, "%s:%d " fmt, __FILE__, __LINE__, ##__VA_ARGS__);	\
 	} while (0)
 
-/* according to uuid_parse(3) */
-#define UUID_STRING_LEN 36
-
-#define MDEV_DEV_PATH_PREFIX "/sys/bus/mdev/devices/"
-#define IOMMU_GROUP_DIR "/iommu_group"
-#define IOMMU_GROUP "0" /* TODO only one IOMMU group for now */
-#define VFIO_CONTAINER "/dev/vfio/vfio"
-#define VFIO_GROUP "/dev/vfio/" IOMMU_GROUP
+#define VFIO_NAME	"vfio"
+#define VFIO_DIR	"/dev/" VFIO_NAME "/"
+#define VFIO_CONTAINER 	VFIO_DIR "/" VFIO_NAME
 
 static int sock = -1;
-static char *uuid;
 
 enum vfio_fd_type {
 	VFIO_FD_TYPE_CONTAINER,
@@ -42,36 +37,58 @@ enum vfio_fd_type {
 };
 
 struct vfio_fd {
-	enum vfio_fd_type vfio_fd_type;
+	enum vfio_fd_type type;
+	unsigned long iommu_grp; /* VFIO_FD_TYPE_GROUP only */
 };
 
 int __open(struct fake_fd *fake_fd, const char *pathname,
 	   int flags __attribute__((unused)), void *priv) {
 
-	int fd = syscall(SYS_memfd_create, pathname, 0);
-	enum vfio_fd_type vfio_fd_type;
+	int fd = -1;
+	int err = 0; 
+	struct vfio_fd *vfio_fd = calloc(1, sizeof *vfio_fd);
 
-	if (fd == -1)
-		return fd;
+	if (!vfio_fd)
+		return -1;
 
-	if (!strcmp(pathname, VFIO_CONTAINER)) {
-		vfio_fd_type = VFIO_FD_TYPE_CONTAINER;
-		debug("container fd=%d\n", fd);
-	} else if (!strcmp(pathname, VFIO_GROUP)) {
-		vfio_fd_type = VFIO_FD_TYPE_GROUP;
-		debug("group fd=%d\n", fd);
+	if ((fd = syscall(SYS_memfd_create, pathname, 0)) == -1) {
+		err = errno;
+		goto out;
+	}
+
+	if (!strncmp(pathname, VFIO_DIR, sizeof VFIO_DIR - 1)) {
+		if (!strcmp(pathname + sizeof VFIO_DIR -1, VFIO_NAME)) {
+			vfio_fd->type = VFIO_FD_TYPE_CONTAINER;
+			debug("container fd=%d\n", fd);
+		} else {
+			char *endptr;
+			vfio_fd->iommu_grp = strtoul(pathname + sizeof VFIO_DIR - 1, &endptr, 10);
+			if (*endptr != '\0' || (vfio_fd->iommu_grp == ULONG_MAX && errno == ERANGE)) {
+				err = EINVAL;
+				goto out;
+			}
+			vfio_fd->type = VFIO_FD_TYPE_GROUP;
+			debug("group fd=%d\n", fd);
+		}
 	} else {
-		if (!priv) {
+		if (!priv && *(bool*)priv != true) {
 			debug("bad path %s\n", pathname);
-			close(fd);
-			errno = EINVAL;
-			return -1;
+			err = EINVAL;
+			goto out;
 		}
 		debug("device fd=%d\n", fd);
-		vfio_fd_type = (enum vfio_fd_type)priv;
+		vfio_fd->type = VFIO_FD_TYPE_DEVICE;
 	}
-	fake_fd_set_priv(fake_fd, (void*)vfio_fd_type);
-	return fd;	
+	fake_fd_set_priv(fake_fd, (void*)vfio_fd);
+out:
+	if (err) {
+		if (fd != -1)
+			close(fd);
+		free(vfio_fd);
+		errno = err;
+		return -1;
+	}
+	return fd;
 }
 
 int __close(struct fake_fd *fake_fd) {
@@ -79,13 +96,12 @@ int __close(struct fake_fd *fake_fd) {
 }
 
 bool __should_trap(const char *pathname) {
-	if (!uuid)
-		return false;
-	if (!strcmp(pathname, VFIO_CONTAINER) || !strcmp(pathname, VFIO_GROUP))
-		return true;
-	if (!strncmp(pathname, MDEV_DEV_PATH_PREFIX, sizeof(MDEV_DEV_PATH_PREFIX) - 1))
-		return true;
-	return false;
+	/*
+	 * FIXME should only trap /dev/vfio/vfio and /dev/vfio/[0-9]+ in order
+	 * in order to allow real VFIO devices to work, however since we already
+	 * trap /dev/vfio/vfio those devices cannot work in the first place.
+	 */
+	return 0 == strncmp(pathname, VFIO_DIR, sizeof VFIO_DIR -1);
 }
 
 ssize_t __read(struct fake_fd *fake_fd __attribute__((unused)),
@@ -169,15 +185,15 @@ ssize_t __write(struct fake_fd *fake_fd  __attribute__((unused)),
 	return count;
 }
 
-static int open_sock(void) {
+static int open_sock(struct vfio_fd *vfio_fd) {
 
 	int ret;
 	struct sockaddr_un addr = {.sun_family = AF_UNIX};
 
-	assert(uuid);
+	assert(vfio_fd);
 
 	ret = snprintf(addr.sun_path, sizeof addr.sun_path,
-	               MUSER_SOCK_DIR "/%s", uuid);
+	               VFIO_DIR "%lu/" MUSER_SOCK, vfio_fd->iommu_grp);
 
 	if ((sock = socket(AF_UNIX, SOCK_STREAM, 0)) == -1) {
 		debug("failed to open socket: %m\n");
@@ -197,7 +213,8 @@ static int vfio_group_get_device_fd(struct fake_fd *fake_fd __attribute__((unuse
 	/* FIXME need to generate name based on passed fake_fd
 	 * FIXME need to associate the fd we return with the passed fake_fd
 	 */
-	return open_fake("device_fd", 0, (void*)VFIO_FD_TYPE_DEVICE);
+	bool flag = true;
+	return open_fake("device_fd", 0, &flag);
 }
 
 static int vfio_set_data_eventfd(struct muser_cmd *muser_cmd, int *fds, size_t size) {
@@ -224,7 +241,7 @@ int __ioctl(struct fake_fd *fake_fd, unsigned int cmd, unsigned long args) {
 	muser_cmd.ioctl.vfio_cmd = cmd;
 
 	if (sock == -1)
-		if ((sock = open_sock()) == -1)
+		if ((sock = open_sock((struct vfio_fd*)fake_fd->priv)) == -1)
 			return sock;
 
 	if ((minsz = get_minsz(cmd)) < 0) {
@@ -394,22 +411,6 @@ int ____xstat64(int ver __attribute__((unused)),
 	return 0;
 }
 
-ssize_t __readlink(const char *pathname, char *buf, size_t bufsiz) {
-	assert(uuid);
-	if (!strncmp(pathname, MDEV_DEV_PATH_PREFIX, sizeof(MDEV_DEV_PATH_PREFIX) - 1)
-	    && !strncmp(pathname + sizeof(MDEV_DEV_PATH_PREFIX) - 1, uuid, UUID_STRING_LEN)
-	    && !strncmp(pathname + sizeof(MDEV_DEV_PATH_PREFIX) - 1 + UUID_STRING_LEN, IOMMU_GROUP_DIR, sizeof(IOMMU_GROUP_DIR) - 1)) {
-		/*
-		 * TODO I think what we actually need here is for the last
-		 * component to be 0 (or a number in general).
-		 */
-		strncpy(buf, "/sys/kernel/iommu_groups/" IOMMU_GROUP, bufsiz);
-		return strlen(buf);
-	}
-	errno = ENOENT;
-	return -1;
-}
-
 char *__realpath(const char *path, char *resolved_path) {
 	if (!resolved_path)
 		resolved_path = strdup(path);
@@ -467,14 +468,10 @@ struct ops ops = {
 	.__xstat = &____xstat,
 	.__xstat64 = &____xstat64,
 	.__lxstat64 = &____xstat64,
-	.readlink = &__readlink,
 	.realpath = &__realpath,
 	.mmap64 = &__mmap64
 };
 
 __attribute__((constructor)) static void ctor()
 {
-	uuid = getenv("LIBVFIO_UUID");
-	if (uuid && strlen(uuid) != UUID_STRING_LEN)
-		uuid = NULL;
 }
