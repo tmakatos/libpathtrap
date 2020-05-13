@@ -1,7 +1,5 @@
-MAJOR = 0
-MINOR = 1
 NAME = libpathtrap
-VERSION = $(MAJOR).$(MINOR)
+VERSION = $(shell git describe --tags | sed -r 's/^v([0-9]+(.[0-9]+)+)$$/\1/')
 LIB = $(NAME).so.$(VERSION)
 
 $(LIB): $(NAME).c vma_addr.c
