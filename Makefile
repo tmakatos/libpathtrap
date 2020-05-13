@@ -14,7 +14,7 @@ build: $(LIB)
 
 .PHONY: install
 install:
-	$(INSTALL_PROG) $(LIB) $(DESTDIR)$(LIBDIR)
+	$(INSTALL_PROG) -D $(LIB) $(DESTDIR)$(LIBDIR)/$(LIB)
 
 .PHONY: clean
 clean:
