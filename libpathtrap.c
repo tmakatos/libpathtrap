@@ -93,8 +93,11 @@ int open_fake(const char *pathname, int flags, void *priv) {
 }
 
 int open(const char *pathname, int flags, ...) {
-	if (!ops.open || !should_trap(pathname))
+	if (!ops.open || !should_trap(pathname)) {
+		__real_open = dlsym(RTLD_NEXT, "open");
+		assert(__real_open);
 		return __real_open(pathname, flags);
+	}
 	return open_fake(pathname, flags, NULL);
 }
 
@@ -119,6 +122,8 @@ int close(int fd) {
 			return ret;
 		}
 	}
+	__real_close = dlsym(RTLD_NEXT, "close");
+	assert(__real_close);
 	return __real_close(fd);
 }
 
@@ -139,8 +144,13 @@ ssize_t _read(int fd, void *buf, size_t count, off_t *offset) {
 		if (fake_fd)
 			return ops.read(*fake_fd, buf, count, offset);
 	}
-	if (offset)
+	if (offset) {
+		__real_pread = dlsym(RTLD_NEXT, "pread");
+		assert(__real_pread);
 		return __real_pread(fd, buf, count, *offset);
+	}
+	__real_read = dlsym(RTLD_NEXT, "read");
+	assert(__real_read);
 	return __real_read(fd, buf, count);
 }
 
@@ -174,8 +184,13 @@ ssize_t _write(int fd, const void *buf, size_t count, off_t *offset) {
 		if (fake_fd)
 			return ops.write(*fake_fd, buf, count, offset);
 	}
-	if (offset)
+	if (offset) {
+		__real_pwrite = dlsym(RTLD_NEXT, "pwrite");
+		assert(__real_pwrite);
 		return __real_pwrite(fd, buf, count, *offset);
+	}
+	__real_write = dlsym(RTLD_NEXT, "write");
+	assert(__real_write);
 	return __real_write(fd, buf, count);
 }
 
@@ -192,20 +207,29 @@ ssize_t pwrite64(int fd, const void *buf, size_t count, off_t offset) {
 }
 
 int __xstat64(int __ver, const char *__filename, struct stat64 *__stat_buf) {
-	if (!ops.__xstat64 || !should_trap(__filename))
+	if (!ops.__xstat64 || !should_trap(__filename)) {
+		__real___xstat64 = dlsym(RTLD_NEXT, "__xstat64");
+		assert(__real___xstat64);
 		return __real___xstat64(__ver, __filename, __stat_buf);
+	}
 	return ops.__xstat64(__ver, __filename, __stat_buf);
 }
 
 int __lxstat64 (int __ver, const char *__filename, struct stat64 *__stat_buf) {
-	if (!ops.__lxstat64 || !should_trap(__filename))
+	if (!ops.__lxstat64 || !should_trap(__filename)) {
+		__real___lxstat64 = dlsym(RTLD_NEXT, "__lxstat64");
+		assert(__real___lxstat64);
 		return __real___lxstat64(__ver, __filename, __stat_buf);
+	}
 	return ops.__lxstat64(__ver, __filename, __stat_buf);
 }
 
 ssize_t readlink(const char *pathname, char *buf, size_t bufsiz) {
-	if (!ops.readlink || !should_trap(pathname))
+	if (!ops.readlink || !should_trap(pathname)) {
+		__real_readlink = dlsym(RTLD_NEXT, "readlink");
+		assert(__real_readlink);
 		return __real_readlink(pathname, buf, bufsiz);
+	}
 	return ops.readlink(pathname, buf, bufsiz);
 }
 
@@ -216,12 +240,17 @@ int ioctl(int fd, unsigned int cmd, unsigned long args) {
 		if (fake_fd)
 			return ops.ioctl(*fake_fd, cmd, args);
 	}
+	__real_ioctl = dlsym(RTLD_NEXT, "ioctl");
+	assert(__real_ioctl);
 	return __real_ioctl(fd, cmd, args);
 }
 
 char *realpath(const char *path, char *resolved_path) {
-	if (!ops.realpath || !should_trap(path))
+	if (!ops.realpath || !should_trap(path)) {
+		__real_realpath = dlsym(RTLD_NEXT, "realpath");
+		assert(__real_realpath);
 		return __real_realpath(path, resolved_path);
+	}
 	return ops.realpath(path, resolved_path);
 }
 
@@ -231,38 +260,11 @@ void* mmap64(void *addr, size_t length, int prot, int flags, int fd, off64_t off
 		if (fake_fd)
 			return ops.mmap64(addr, length, prot, flags, *fake_fd, offset);
 	}
+	__real_mmap64 = dlsym(RTLD_NEXT, "mmap64");
 	assert(__real_mmap64);
 	return __real_mmap64(addr, length, prot, flags, fd, offset);
 }
 
 void *mmap(void *addr, size_t length, int prot, int flags, int fd, off_t offset) {
 	return mmap64(addr, length, prot, flags, fd, offset);
-}
-
-__attribute__((constructor)) static void ctor()
-{
-	/* FIXME don't assert */
-	__real_open = dlsym(RTLD_NEXT, "open");
-	assert(__real_open);
-	__real_close = dlsym(RTLD_NEXT, "close");
-	assert(__real_close);
-	__real_read = dlsym(RTLD_NEXT, "read");
-	assert(__real_read);
-	__real_pread = dlsym(RTLD_NEXT, "pread");
-	assert(__real_pread);
-	__real_write = dlsym(RTLD_NEXT, "write");
-	assert(__real_write);
-	__real_pwrite = dlsym(RTLD_NEXT, "pwrite");
-	assert(__real_pwrite);
-	__real_realpath = dlsym(RTLD_NEXT, "realpath");
-	assert(__real_realpath);
-	__real_ioctl = dlsym(RTLD_NEXT, "ioctl");
-	assert(__real_ioctl);
-	__real___xstat64 = dlsym(RTLD_NEXT, "__xstat64");
-	assert(__real___xstat64);
-	__real___lxstat64 = dlsym(RTLD_NEXT, "__lxstat64");
-	assert(__real___lxstat64);
-	__real_readlink = dlsym(RTLD_NEXT, "readlink");
-	assert(__real_readlink);
-	__real_mmap64 = dlsym(RTLD_NEXT, "mmap64");
 }
