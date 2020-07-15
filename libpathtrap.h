@@ -28,6 +28,9 @@
  *
  */
 
+#ifndef __LIBPATHTRAP_H__
+#define __LIBPATHTRAP_H__
+
 #define _GNU_SOURCE
 #include <stdbool.h>
 #include <sys/types.h>
@@ -81,3 +84,5 @@ ssize_t (*__real_readlink)(const char*, char*, size_t);
 void* (*__real_mmap64)(void*, size_t, int, int, int, off64_t);
 
 int open_fake(const char*, int, void*);
+
+#endif /* __LIBPATHTRAP_H__ */
