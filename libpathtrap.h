@@ -68,20 +68,20 @@ extern struct ops {
 	void* (*mmap64)(void*, size_t, int, int, struct fake_fd*, off64_t);
 } ops;
 
-int (*__real_open)(const char*, int);
-int (*__real_read)(int, void*, size_t);
-int (*__real_pread)(int, void*, size_t, off_t);
-ssize_t (*__real_write)(int, const void*, size_t);
-ssize_t (*__real_pwrite)(int, const void*, size_t, off_t);
-char* (*__real_realpath)(const char*, char*);
-int (*__real_ioctl)(int, unsigned int, unsigned long);
-int (*__real_close)(int);
-int (*__real___xstat)(int, const char*, struct stat*);
-int (*__real___fxstat64)(int, int, struct stat64*);
-int (*__real___xstat64)(int, const char*, struct stat64*);
-int (*__real___lxstat64)(int, const char*, struct stat64*);
-ssize_t (*__real_readlink)(const char*, char*, size_t);
-void* (*__real_mmap64)(void*, size_t, int, int, int, off64_t);
+extern int (*__real_open)(const char*, int);
+extern int (*__real_read)(int, void*, size_t);
+extern int (*__real_pread)(int, void*, size_t, off_t);
+extern ssize_t (*__real_write)(int, const void*, size_t);
+extern ssize_t (*__real_pwrite)(int, const void*, size_t, off_t);
+extern char* (*__real_realpath)(const char*, char*);
+extern int (*__real_ioctl)(int, unsigned int, unsigned long);
+extern int (*__real_close)(int);
+extern int (*__real___xstat)(int, const char*, struct stat*);
+extern int (*__real___fxstat64)(int, int, struct stat64*);
+extern int (*__real___xstat64)(int, const char*, struct stat64*);
+extern int (*__real___lxstat64)(int, const char*, struct stat64*);
+extern ssize_t (*__real_readlink)(const char*, char*, size_t);
+extern void* (*__real_mmap64)(void*, size_t, int, int, int, off64_t);
 
 int open_fake(const char*, int, void*);
 
