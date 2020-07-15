@@ -68,20 +68,20 @@ extern struct ops {
 	void* (*mmap64)(void*, size_t, int, int, struct fake_fd*, off64_t);
 } ops;
 
-extern int (*__real_open)(const char*, int);
-extern int (*__real_read)(int, void*, size_t);
-extern int (*__real_pread)(int, void*, size_t, off_t);
-extern ssize_t (*__real_write)(int, const void*, size_t);
-extern ssize_t (*__real_pwrite)(int, const void*, size_t, off_t);
-extern char* (*__real_realpath)(const char*, char*);
-extern int (*__real_ioctl)(int, unsigned int, unsigned long);
-extern int (*__real_close)(int);
-extern int (*__real___xstat)(int, const char*, struct stat*);
-extern int (*__real___fxstat64)(int, int, struct stat64*);
-extern int (*__real___xstat64)(int, const char*, struct stat64*);
-extern int (*__real___lxstat64)(int, const char*, struct stat64*);
-extern ssize_t (*__real_readlink)(const char*, char*, size_t);
-extern void* (*__real_mmap64)(void*, size_t, int, int, int, off64_t);
+int (*__real_open)(const char*, int) __attribute__ ((weak));
+int (*__real_read)(int, void*, size_t) __attribute__ ((weak));
+int (*__real_pread)(int, void*, size_t, off_t) __attribute__ ((weak));
+ssize_t (*__real_write)(int, const void*, size_t) __attribute__ ((weak));
+ssize_t (*__real_pwrite)(int, const void*, size_t, off_t) __attribute__ ((weak));
+char* (*__real_realpath)(const char*, char*) __attribute__ ((weak));
+int (*__real_ioctl)(int, unsigned int, unsigned long) __attribute__ ((weak));
+int (*__real_close)(int) __attribute__ ((weak));
+int (*__real___xstat)(int, const char*, struct stat*) __attribute__ ((weak));
+int (*__real___fxstat64)(int, int, struct stat64*) __attribute__ ((weak));
+int (*__real___xstat64)(int, const char*, struct stat64*) __attribute__ ((weak));
+int (*__real___lxstat64)(int, const char*, struct stat64*) __attribute__ ((weak));
+ssize_t (*__real_readlink)(const char*, char*, size_t) __attribute__ ((weak));
+void* (*__real_mmap64)(void*, size_t, int, int, int, off64_t) __attribute__ ((weak));
 
 int open_fake(const char*, int, void*);
 
